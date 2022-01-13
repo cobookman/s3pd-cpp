@@ -2,6 +2,15 @@
 #include <mutex>
 #include <atomic>
 #include <aws/s3-crt/S3CrtClient.h>
+#include <aws/core/Aws.h>
+
+#include <aws/core/utils/memory/AWSMemory.h>
+#include <aws/core/utils/memory/stl/AWSStreamFwd.h>
+#include <aws/core/utils/stream/PreallocatedStreamBuf.h>
+#include <aws/core/utils/StringUtils.h>
+#include <aws/core/utils/DateTime.h>
+#include <aws/core/utils/threading/Executor.h>
+#include <aws/core/utils/memory/stl/AWSStringStream.h>
 
 
 /**
@@ -22,6 +31,9 @@ class S3Copy {
         // Concurrent Object downloads
         int64_t concurrentDownloads = 10;
 
+        // Use HTTPS?
+        bool https = true;
+        
         // Starts the S3 copy job
         void Start(std::string bucket, std::string prefix, std::string destination);
 
@@ -32,12 +44,12 @@ class S3Copy {
         std::mutex jobsMutex;
         std::queue<std::string> jobs;
 
-        Aws::S3Crt::S3CrtClient *s3CrtClient;
+        std::shared_ptr<Aws::S3Crt::S3CrtClient> s3CrtClient;
         std::atomic_bool doneQueuingJobs;
         std::atomic_uint64_t bytesDownloaded; 
         std::atomic_uint64_t bytesQueued;
         void queueObjects(std::string bucket, std::string prefix);
         std::string getJob();
-        void worker(Aws::S3Crt::S3CrtClient *client, std::string bucket, std::string destination);
+        void worker(std::string bucket, std::string destination);
 
 };
