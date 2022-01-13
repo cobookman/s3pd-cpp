@@ -20,7 +20,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE aws-cpp-sdk-s3)
 target_link_libraries(${PROJECT_NAME} PRIVATE aws-cpp-sdk-s3-crt)
 
 # GFlags
-set(GFLAGS_STRIP_INTERNAL_FLAG_HELP 1 CACHE INTERNAL "")
+set(GFLAGS_STRIP_INTERNAL_FLAG_HELP "1" CACHE INTERNAL "")
 FetchContent_Declare(
   gflags
   GIT_REPOSITORY https://github.com/gflags/gflags.git

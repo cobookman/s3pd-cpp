@@ -1,5 +1,14 @@
 #include "s3copy.h"
+#include <fstream>
 #include <unistd.h>
+#include <aws/s3-crt/model/ListObjectsV2Request.h>
+#include <aws/s3-crt/model/GetObjectRequest.h>
+#include <aws/core/Aws.h>
+#include <aws/core/utils/memory/stl/AWSStringStream.h>
+#include <aws/core/utils/logging/CRTLogSystem.h>
+#include <thread>
+#include <filesystem>
+#include <chrono>
 
 void S3Copy::Start(std::string bucket, std::string prefix, std::string destination) {
     Aws::SDKOptions options;
@@ -13,6 +22,7 @@ void S3Copy::Start(std::string bucket, std::string prefix, std::string destinati
     // Code Block forces our s3 crt client to be freed up once we're done using it
     // https://docs.aws.amazon.com/sdk-for-cpp/v1/developer-guide/basic-use.html
     Aws::InitAPI(options);
+    
     this->s3CrtClient = new Aws::S3Crt::S3CrtClient(config);
 
     // Start thread to get S3 objects in bucket & prefix
@@ -21,9 +31,21 @@ void S3Copy::Start(std::string bucket, std::string prefix, std::string destinati
     // Start up pool of workers to have concurrent downloads
     std::thread **workers = new std::thread*[this->concurrentDownloads];
     for (int i = 0; i < this->concurrentDownloads; i++) {
-        workers[i] = new std::thread(&S3Copy::worker, this);
+        workers[i] = new std::thread(&S3Copy::worker, this, bucket, destination);
     }
     
+
+    // Output throughput
+    auto start = std::chrono::system_clock::now();
+    while (!this->IsDone()) {
+        auto end = std::chrono::system_clock::now();
+        std::chrono::duration<double> diff = end - start;
+        std::cout << "Time to download: " << (this->bytesDownloaded / 1024 / 1024) << "MiB "
+                  "took " << diff.count() << std::endl;
+        sleep(3);
+    }
+
+
     // Wait for threads to finish
     queueThread.join();
     for (int i = 0; i < this->concurrentDownloads; i++) {
@@ -86,12 +108,38 @@ std::string S3Copy::getJob() {
     return "";
 }
 
-void S3Copy::worker() {
+void S3Copy::worker(std::string bucket, std::string destination) {
     std::cout << "Worker starting!" << std::endl;
     std::string job;
     while ((job = this->getJob()) != "") {
-        // TODO(boocolin): Implement s3 downloading
-        std::cout << "Got a job!: " << job << std::endl;
+        std::cout << "Worker starting job: s3://" << bucket << "/" << job << std::endl;
+        Aws::S3Crt::Model::GetObjectRequest request;
+        request.SetBucket(bucket);
+        request.SetKey(job);
+        Aws::S3Crt::Model::GetObjectOutcome outcome = this->s3CrtClient->GetObject(request);
+        if (!outcome.IsSuccess()) {
+            std::cerr << "Error downloading object: s3://" << bucket << "/" << job << " " << outcome.GetError().GetMessage() << std::endl;
+            continue;
+        }
+
+        std::string filename = "/tmp/tt/" + job;
+        std::filesystem::path path(destination);
+        std::filesystem::path file(job);
+        std::filesystem::path full_path = path / file;
+        std::filesystem::path dir_path = full_path;
+        dir_path.remove_filename();
+
+        // std::cout << "Saving to: " << full_path << std::endl;
+        if (!std::filesystem::exists(dir_path)) {
+            std::filesystem::create_directory(dir_path);
+        }
+
+        size_t bytes = outcome.GetResult().GetContentLength();
+        
+        std::ofstream output_file(full_path.c_str(), std::ios::out |std::ios::binary);
+        output_file << outcome.GetResult().GetBody().rdbuf();
+        this->bytesDownloaded += bytes;
+        std::cout << "Wrote " << (bytes / 1024 / 1024) << "MiB to " << full_path << std::endl;
     }
 }
 bool S3Copy::IsDone() {

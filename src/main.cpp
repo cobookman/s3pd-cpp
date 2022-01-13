@@ -5,7 +5,6 @@
 #include <aws/s3-crt/S3CrtClient.h>
 #include <aws/s3-crt/model/ListObjectsV2Request.h>
 #include <aws/core/Aws.h>
-#include <aws/core/utils/memory/stl/AWSStringStream.h>
 #include <aws/core/utils/logging/CRTLogSystem.h>
 #include <aws/core/utils/memory/stl/AWSStringStream.h>
 #include <aws/core/utils/UUID.h>
@@ -15,6 +14,8 @@ DEFINE_string(region, "", "Specifies which AWS Regional S3 API endpoint to use")
 DEFINE_int64(throughputTarget, 5, "Throughput in Gbps to target for each file download, "
     "generally max instance throughput. For m5n.24xl this is generally set to 100");
 DEFINE_uint64(partSize, 8 * 1024 * 1024, "Bytes to download per HTTP request");
+DEFINE_uint64(concurrent, 10, "Concurrent object downloads");
+
 
 bool isS3(std::string str) {
     return str.substr(0, 5) == "s3://";
@@ -82,9 +83,10 @@ int main(int argc, char *argv[]) {
         if (FLAGS_region.size() > 0) {
             s3Copy.region = FLAGS_region;
         }
+    
         s3Copy.throughputTargetGbps = FLAGS_throughputTarget;
         s3Copy.partSize = FLAGS_partSize;
-        s3Copy.concurrentDownloads = 10;
+        s3Copy.concurrentDownloads = FLAGS_concurrent;
         s3Copy.Start(bucket, prefix, destination);
     } else {
         std::cerr << "S3 writes not yet supported";

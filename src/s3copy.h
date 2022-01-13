@@ -1,13 +1,8 @@
 #include <queue>
 #include <mutex>
-#include <thread>
-#include <aws/s3-crt/S3CrtClient.h>
-#include <aws/s3-crt/model/ListObjectsV2Request.h>
-#include <aws/core/Aws.h>
-#include <aws/core/utils/memory/stl/AWSStringStream.h>
-#include <aws/core/utils/logging/CRTLogSystem.h>
-#include <aws/core/utils/memory/stl/AWSStringStream.h>
 #include <atomic>
+#include <aws/s3-crt/S3CrtClient.h>
+
 
 /**
  * Starts a copy job from S3 to the local filesystem
@@ -39,7 +34,8 @@ class S3Copy {
 
         Aws::S3Crt::S3CrtClient *s3CrtClient;
         std::atomic_bool doneQueuingJobs;
+        std::atomic_uint64_t bytesDownloaded; 
         void queueObjects(std::string bucket, std::string prefix);
         std::string getJob();
-        void worker();
+        void worker(std::string bucket, std::string destination);
 };
