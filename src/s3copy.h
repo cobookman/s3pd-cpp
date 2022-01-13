@@ -38,5 +38,6 @@ class S3Copy {
         std::atomic_uint64_t bytesQueued;
         void queueObjects(std::string bucket, std::string prefix);
         std::string getJob();
-        void worker(std::string bucket, std::string destination);
+        void worker(Aws::S3Crt::S3CrtClient *client, std::string bucket, std::string destination);
+
 };

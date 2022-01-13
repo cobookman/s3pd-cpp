@@ -12,7 +12,16 @@
 
 void S3Copy::Start(std::string bucket, std::string prefix, std::string destination) {
     Aws::SDKOptions options;
-    // options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info;
+    options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info;
+    options.ioOptions.clientBootstrap_create_fn = []() {
+        Aws::Crt::Io::EventLoopGroup eventLoopGroup(0 /* cpuGroup */, 32 /* threadCount */);
+        Aws::Crt::Io::DefaultHostResolver defaultHostResolver(eventLoopGroup, 16 /* maxHosts */, 300 /* maxTTL */);
+        auto clientBootstrap = Aws::MakeShared<Aws::Crt::Io::ClientBootstrap>("aws-crt", eventLoopGroup, defaultHostResolver);
+        clientBootstrap->EnableBlockingShutdown();
+        return clientBootstrap;
+    };
+
+
 
     Aws::S3Crt::ClientConfiguration config;
     config.region = this->region;
@@ -30,8 +39,10 @@ void S3Copy::Start(std::string bucket, std::string prefix, std::string destinati
 
     // Start up pool of workers to have concurrent downloads
     std::thread **workers = new std::thread*[this->concurrentDownloads];
+    Aws::S3Crt::S3CrtClient **srtClients = new Aws::S3Crt::S3CrtClient*[this->concurrentDownloads];
     for (int i = 0; i < this->concurrentDownloads; i++) {
-        workers[i] = new std::thread(&S3Copy::worker, this, bucket, destination);
+        srtClients[i] = new Aws::S3Crt::S3CrtClient(config);
+        workers[i] = new std::thread(&S3Copy::worker, this, srtClients[i], bucket, destination);
     }
     
 
@@ -60,8 +71,10 @@ void S3Copy::Start(std::string bucket, std::string prefix, std::string destinati
             << " [" << (double) this->bytesDownloaded / 1024 /1024 / 1024 << "" 
             << "/" << (double) this->bytesQueued / 1024 / 1024 / 1024 << "GiB] " 
             << "[" << gibps << " Gibps]"
+            << " [" << this->jobs.size() << " objects remaining]"
             << "\r";
         std::cout.flush();
+        sleep(1);
     }
 
     //     std::chrono::duration<double> diff = end - start;
@@ -134,13 +147,13 @@ std::string S3Copy::getJob() {
     return "";
 }
 
-void S3Copy::worker(std::string bucket, std::string destination) {
+void S3Copy::worker(Aws::S3Crt::S3CrtClient *client, std::string bucket, std::string destination) {
     std::string job;
     while ((job = this->getJob()) != "") {
         Aws::S3Crt::Model::GetObjectRequest request;
         request.SetBucket(bucket);
         request.SetKey(job);
-        Aws::S3Crt::Model::GetObjectOutcome outcome = this->s3CrtClient->GetObject(request);
+        Aws::S3Crt::Model::GetObjectOutcome outcome = client->GetObject(request);
         if (!outcome.IsSuccess()) {
             std::cerr << "Error downloading object: s3://" << bucket << "/" << job << " " << outcome.GetError().GetMessage() << std::endl;
             continue;
