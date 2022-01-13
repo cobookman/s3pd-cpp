@@ -37,13 +37,38 @@ void S3Copy::Start(std::string bucket, std::string prefix, std::string destinati
 
     // Output throughput
     auto start = std::chrono::system_clock::now();
+    float progress = 0.0;
+    int barWidth = 70;
     while (!this->IsDone()) {
-        auto end = std::chrono::system_clock::now();
-        std::chrono::duration<double> diff = end - start;
-        std::cout << "Time to download: " << (this->bytesDownloaded / 1024 / 1024) << "MiB "
-                  "took " << diff.count() << std::endl;
-        sleep(3);
+        progress =  (double) this->bytesDownloaded / this->bytesQueued;
+        
+        std::cout << "[";
+        int pos = barWidth * progress;
+        for (int i = 0; i < barWidth; ++i) {
+            if (i < pos) std::cout << "=";
+            else if (i == pos) std::cout << ">";
+            else std::cout << " ";
+        }
+
+        auto dur = std::chrono::system_clock::now() - start;
+        auto secs = std::chrono::duration<double>(dur).count();
+
+        double gibps = ((double) this->bytesDownloaded / 1024 / 1024 / 1024) * 8 / secs;
+        std::cout << std::fixed;
+        std::cout << std::setprecision(2);
+        std::cout << "] " << int(progress * 100.0) << "% "
+            << " [" << (double) this->bytesDownloaded / 1024 /1024 / 1024 << "" 
+            << "/" << (double) this->bytesQueued / 1024 / 1024 / 1024 << "GiB] " 
+            << "[" << gibps << " Gibps]"
+            << "\r";
+        std::cout.flush();
     }
+
+    //     std::chrono::duration<double> diff = end - start;
+    //     std::cout << "Time to download: " << (this->bytesDownloaded / 1024 / 1024) << "MiB "
+    //               "took " << diff.count() << std::endl;
+    //     sleep(3);
+    // }
 
 
     // Wait for threads to finish
@@ -75,6 +100,7 @@ void S3Copy::queueObjects(std::string bucket, std::string prefix) {
         {
             const std::lock_guard<std::mutex> lock(this->jobsMutex);
             for (Aws::S3Crt::Model::Object& object : objects) {
+                this->bytesQueued += object.GetSize();
                 this->jobs.push(object.GetKey());
             }
         }
@@ -109,10 +135,8 @@ std::string S3Copy::getJob() {
 }
 
 void S3Copy::worker(std::string bucket, std::string destination) {
-    std::cout << "Worker starting!" << std::endl;
     std::string job;
     while ((job = this->getJob()) != "") {
-        std::cout << "Worker starting job: s3://" << bucket << "/" << job << std::endl;
         Aws::S3Crt::Model::GetObjectRequest request;
         request.SetBucket(bucket);
         request.SetKey(job);
@@ -139,7 +163,6 @@ void S3Copy::worker(std::string bucket, std::string destination) {
         std::ofstream output_file(full_path.c_str(), std::ios::out |std::ios::binary);
         output_file << outcome.GetResult().GetBody().rdbuf();
         this->bytesDownloaded += bytes;
-        std::cout << "Wrote " << (bytes / 1024 / 1024) << "MiB to " << full_path << std::endl;
     }
 }
 bool S3Copy::IsDone() {
