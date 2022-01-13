@@ -1,7 +1,7 @@
 #include "s3copy.h"
 #include <unistd.h>
 
-void S3Copy::Start(std::string s3url, std::string destination) {
+void S3Copy::Start(std::string bucket, std::string prefix, std::string destination) {
     Aws::SDKOptions options;
     // options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Info;
 
@@ -16,7 +16,7 @@ void S3Copy::Start(std::string s3url, std::string destination) {
     this->s3CrtClient = new Aws::S3Crt::S3CrtClient(config);
 
     // Start thread to get S3 objects in bucket & prefix
-    std::thread queueThread(&S3Copy::queueObjects, this);
+    std::thread queueThread(&S3Copy::queueObjects, this, bucket, prefix);
 
     // Start up pool of workers to have concurrent downloads
     std::thread **workers = new std::thread*[this->concurrentDownloads];
@@ -36,11 +36,14 @@ void S3Copy::Start(std::string s3url, std::string destination) {
     Aws::ShutdownAPI(options);
 }
 
-void S3Copy::queueObjects() {
+void S3Copy::queueObjects(std::string bucket, std::string prefix) {
     this->doneQueuingJobs = false;
 
     Aws::S3Crt::Model::ListObjectsV2Request request;
-    request.WithBucket("test-400gbps-s3");
+    request.WithBucket(bucket);
+    if (prefix.length() > 0) {
+        request.SetPrefix(prefix);
+    }
     request.SetMaxKeys(1000);
     Aws::S3Crt::Model::ListObjectsV2Outcome outcome = this->s3CrtClient->ListObjectsV2(request);
 
@@ -87,6 +90,7 @@ void S3Copy::worker() {
     std::cout << "Worker starting!" << std::endl;
     std::string job;
     while ((job = this->getJob()) != "") {
+        // TODO(boocolin): Implement s3 downloading
         std::cout << "Got a job!: " << job << std::endl;
     }
 }

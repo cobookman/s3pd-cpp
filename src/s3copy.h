@@ -28,7 +28,7 @@ class S3Copy {
         int64_t concurrentDownloads = 10;
 
         // Starts the S3 copy job
-        void Start(std::string s3url, std::string destination);
+        void Start(std::string bucket, std::string prefix, std::string destination);
 
         // If the copy job is done
         bool IsDone();
@@ -39,7 +39,7 @@ class S3Copy {
 
         Aws::S3Crt::S3CrtClient *s3CrtClient;
         std::atomic_bool doneQueuingJobs;
-        void queueObjects();
+        void queueObjects(std::string bucket, std::string prefix);
         std::string getJob();
         void worker();
 };
