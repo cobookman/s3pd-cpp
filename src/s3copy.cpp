@@ -67,7 +67,7 @@ void S3Copy::Start(std::string bucket, std::string prefix, std::string destinati
 
     // Output average throughput over last N seconds & progress downloading files
     const int barWidth = 70;
-    const int outputEvery = 3; // seconds
+    const int outputEvery = 1; // seconds
     uint64_t lastObservedBytesDownloaded = 0;
     const auto start = std::chrono::system_clock::now();
     while (!this->IsDone()) {
@@ -161,6 +161,21 @@ std::string S3Copy::getJob() {
     return "";
 }
 
+std::string S3Copy::prepareFilepath(std::string destination, std::string objectKey) {
+        std::filesystem::path path(destination);
+        std::filesystem::path file(objectKey);
+        std::filesystem::path full_path = path / file;
+
+        std::filesystem::path dir_path = full_path;
+        dir_path.remove_filename();
+
+        if (!std::filesystem::exists(dir_path)) {
+            std::filesystem::create_directory(dir_path);
+        }
+
+        return path.u8string();
+}
+
 void S3Copy::worker(std::string bucket, std::string destination) {
     Aws::S3Crt::Model::GetObjectRequest getRequest;
     getRequest.SetBucket(bucket);
@@ -195,6 +210,15 @@ void S3Copy::worker(std::string bucket, std::string destination) {
     while ((key = this->getJob()) != "") {
         maxConcurrent.WaitOne();
         getRequest.WithKey(key);
+        if (!this->isBenchmark) {
+            auto filepath = this->prepareFilepath(destination, key);
+
+            getRequest.SetResponseStreamFactory([filepath]() {
+                    return Aws::New<Aws::FStream>(
+                        ALLOCATION_TAG, filepath, std::ios_base::out); 
+            });
+        }
+
         this->s3CrtClient->GetObjectAsync(getRequest, GetHandler, nullptr);
     }
 

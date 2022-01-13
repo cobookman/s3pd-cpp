@@ -33,6 +33,9 @@ class S3Copy {
 
         // Use HTTPS?
         bool https = true;
+
+        // Discard output when set to true will throw away bytes downloaded to a noop iostream
+        bool isBenchmark = false;
         
         // Starts the S3 copy job
         void Start(std::string bucket, std::string prefix, std::string destination);
@@ -53,5 +56,5 @@ class S3Copy {
         void queueObjects(std::string bucket, std::string prefix);
         std::string getJob();
         void worker(std::string bucket, std::string destination);
-
+        std::string prepareFilepath(std::string bucket, std::string objectKey);
 };
