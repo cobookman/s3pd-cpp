@@ -1,6 +1,7 @@
 include(FetchContent)
 
-add_executable(${PROJECT_NAME} main.cpp)
+file(GLOB SOURCES "*.cpp")
+add_executable(${PROJECT_NAME} ${SOURCES})
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "../")
 
 # Dependencies
@@ -29,9 +30,15 @@ FetchContent_MakeAvailable(gflags)
 find_package(gflags)
 target_link_libraries(${PROJECT_NAME} PRIVATE gflags::gflags)
 
-#FetchContent_GetProperties(gflags)
-#if (NOT gflags_POPULATED)
-#    FetchContent_Populate(gflags)
-#    add_subdirectory(${gflags_SOURCE_DIR} ${gflags_BINARY_DIR})
-#endif ()
+# Boost
+# find_package(Boost 1.73 REQUIRED COMPONENTS boost)
+# include_directories(${Boost_INCLUDE_DIR})
+# link_directories(${Boost_LIBRARY_DIRS})
+# message(STATUS "Boost_FOUND: ${Boost_FOUND}")
+# target_link_libraries(${PROJECT_NAME} PRIVATE Boost::boost)
+
+
+
+
+
 

@@ -30,3 +30,8 @@ export PATH=/opt/homebrew/opt/curlpp/lib:$PATH
 export CURL_LIBRARY=/opt/homebrew/opt/curl/lib
 export CURL_INCLUDE_DIR=/opt/homebrew/opt/curl/include
 ```
+
+# Deps
+zlib
+curl
+boost
