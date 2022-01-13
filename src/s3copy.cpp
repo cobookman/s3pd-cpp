@@ -57,31 +57,23 @@ void S3Copy::Start(std::string bucket, std::string prefix, std::string destinati
     config.partSize = this->partSize;
     config.scheme = this->https ? Aws::Http::Scheme::HTTPS : Aws::Http::Scheme::HTTP;
     config.throughputTargetGbps = this->throughputTargetGbps;
-    
     this->s3CrtClient = Aws::MakeShared<Aws::S3Crt::S3CrtClient>(ALLOCATION_TAG, config);
 
     // Start thread to get S3 objects in bucket & prefix
     std::thread queueThread(&S3Copy::queueObjects, this, bucket, prefix);
 
-    // Add to our queue multiple objects
-    
-
-    // std::thread **workers = new std::thread*[this->concurrentDownloads];
-    // Aws::S3Crt::S3CrtClient **srtClients = new Aws::S3Crt::S3CrtClient*[this->concurrentDownloads];
-    // for (int i = 0; i < this->concurrentDownloads; i++) {
-    //     srtClients[i] = new Aws::S3Crt::S3CrtClient(config);
-    //     workers[i] = new std::thread(&S3Copy::worker, this, srtClients[i], bucket, destination);
-    // }
-
+    // Start thread which queues s3 objects to s3crt
     std::thread workerThread(&S3Copy::worker, this, bucket, destination);
 
-    // Output throughput
-    auto start = std::chrono::system_clock::now();
-    float progress = 0.0;
-    int barWidth = 70;
+    // Output average throughput over last N seconds & progress downloading files
+    const int barWidth = 70;
+    const int outputEvery = 3; // seconds
+    uint64_t lastObservedBytesDownloaded = 0;
+    const auto start = std::chrono::system_clock::now();
     while (!this->IsDone()) {
-        progress =  (double) this->bytesDownloaded / this->bytesQueued;
+        float progress =  (double) this->bytesDownloaded / this->bytesQueued;
         
+        // Output Progress Bar
         std::cout << "[";
         int pos = barWidth * progress;
         for (int i = 0; i < barWidth; ++i) {
@@ -89,39 +81,30 @@ void S3Copy::Start(std::string bucket, std::string prefix, std::string destinati
             else if (i == pos) std::cout << ">";
             else std::cout << " ";
         }
+        std::cout << "]";
 
+        // Get throughput since last probe
         auto dur = std::chrono::system_clock::now() - start;
-        auto secs = std::chrono::duration<double>(dur).count();
+        double bytesDld = this->bytesDownloaded - lastObservedBytesDownloaded;
+        lastObservedBytesDownloaded = this->bytesDownloaded;
+        double throughput = (bytesDld / 1024 / 1024 / 1024) * 8 / outputEvery;
 
-        double gibps = ((double) this->bytesDownloaded / 1024 / 1024 / 1024) * 8 / secs;
+        // Output throughput & download info
         std::cout << std::fixed;
         std::cout << std::setprecision(2);
-        std::cout << "] " << int(progress * 100.0) << "% "
+        std::cout << " " << int(progress * 100.0) << "% "
             << " [" << (double) this->bytesDownloaded / 1024 /1024 / 1024 << "" 
             << "/" << (double) this->bytesQueued / 1024 / 1024 / 1024 << "GiB] " 
-            << "[" << gibps << " Gibps]"
-            << " [" << this->jobs.size() << " objects remaining]"
+            << "[" << throughput << " Gibps]"
+            << "[" << this->objectsDownloaded << "/" << this->objectsQueued << "objects]"
             << "\r";
         std::cout.flush();
-        sleep(1);
+        sleep(outputEvery);
     }
-
-    //     std::chrono::duration<double> diff = end - start;
-    //     std::cout << "Time to download: " << (this->bytesDownloaded / 1024 / 1024) << "MiB "
-    //               "took " << diff.count() << std::endl;
-    //     sleep(3);
-    // }
-
 
     // Wait for threads to finish
     queueThread.join();
     workerThread.join();
-    // for (int i = 0; i < this->concurrentDownloads; i++) {
-    //     workers[i]->join();
-    // }
-
-    // Clean up s3 client;
-    // delete this->s3CrtClient;
 
     Aws::ShutdownAPI(options);
 }
@@ -144,6 +127,7 @@ void S3Copy::queueObjects(std::string bucket, std::string prefix) {
             const std::lock_guard<std::mutex> lock(this->jobsMutex);
             for (Aws::S3Crt::Model::Object& object : objects) {
                 this->bytesQueued += object.GetSize();
+                this->objectsQueued += 1;
                 this->jobs.push(object.GetKey());
             }
         }
@@ -188,35 +172,21 @@ void S3Copy::worker(std::string bucket, std::string destination) {
     auto start = Aws::Utils::DateTime::Now();
     auto prev = start;
     std::atomic_uint64_t peekThroughPut = 0;
-    getRequest.SetDataReceivedEventHandler([&](const Aws::Http::HttpRequest*, Aws::Http::HttpResponse*, long long bytes){
+    getRequest.SetDataReceivedEventHandler([&](const Aws::Http::HttpRequest*, Aws::Http::HttpResponse*, long long bytes) {
         this->bytesDownloaded += bytes;
-        auto current = Aws::Utils::DateTime::Now();
-        double diffSec = (Aws::Utils::DateTime::Diff(current, prev).count() / 1000.0);
-        if (diffSec > 1) {
-            prev = current;
-            double throughPut = bytes * 8 / 1024 / 1024 / 1024 / diffSec;
-            if (throughPut > peekThroughPut) {
-                peekThroughPut = throughPut;
-            }
-
-            std::cout << "Running time: " << Aws::Utils::DateTime::Diff(current, start).count() / 1000.0 << " seconds" << "\t";
-            // std::cout << "Bytes in this second: " << totalBytes * 1.0 / 1024 / 1024 / 1024 << " GB" << "\t";
-            std::cout << "Current throughput: " << throughPut << "Gbps\t";
-            std::cout << "Peek throughput: " << peekThroughPut << "Gbps" << std::endl;
-        }
     });
+
     // Uses semaphore to limit the number of concurrent requests
     Aws::Utils::Threading::Semaphore maxConcurrent(this->concurrentDownloads, this->concurrentDownloads);
     auto GetHandler = Aws::S3Crt::GetObjectResponseReceivedHandler {
         [&](const Aws::S3Crt::S3CrtClient*, const Aws::S3Crt::Model::GetObjectRequest&, const Aws::S3Crt::Model::GetObjectOutcome &outcome,
-            const std::shared_ptr<const Aws::Client::AsyncCallerContext>&) {
+            const std::shared_ptr<const Aws::Client::AsyncCallerContext>&)
+        {
+            this->objectsDownloaded += 1;
             if (!outcome.IsSuccess()) {
                 std::cout << outcome.GetError() << std::endl;
             }
 
-            // if (finished == fileCnt) {
-            //     sem.ReleaseAll();
-            // }
             maxConcurrent.Release();
         }
     };
@@ -257,6 +227,5 @@ void S3Copy::worker(std::string bucket, std::string destination) {
     // }
 }
 bool S3Copy::IsDone() {
-    const std::lock_guard<std::mutex> lock(this->jobsMutex);
-    return this->doneQueuingJobs.load() && this->jobs.size() == 0;
+    return this->doneQueuingJobs && (this->objectsDownloaded == this->objectsQueued);
 }

@@ -45,9 +45,11 @@ class S3Copy {
         std::queue<std::string> jobs;
 
         std::shared_ptr<Aws::S3Crt::S3CrtClient> s3CrtClient;
-        std::atomic_bool doneQueuingJobs;
-        std::atomic_uint64_t bytesDownloaded; 
-        std::atomic_uint64_t bytesQueued;
+        std::atomic_bool doneQueuingJobs = false;
+        std::atomic_uint64_t bytesDownloaded = 0;
+        std::atomic_uint64_t bytesQueued = 0;
+        std::atomic_uint64_t objectsDownloaded = 0;
+        std::atomic_uint64_t objectsQueued = 0;
         void queueObjects(std::string bucket, std::string prefix);
         std::string getJob();
         void worker(std::string bucket, std::string destination);

@@ -11,10 +11,10 @@
 #include "s3copy.h"
 
 DEFINE_string(region, "", "Specifies which AWS Regional S3 API endpoint to use");
-DEFINE_int64(throughputTarget, 5, "Throughput in Gbps to target for each file download, "
+DEFINE_int64(throughputTarget, 100, "Throughput in Gbps to target for each file download, "
     "generally max instance throughput. For m5n.24xl this is generally set to 100");
 DEFINE_uint64(partSize, 8 * 1024 * 1024, "Bytes to download per HTTP request");
-DEFINE_uint64(concurrent, 10, "Concurrent object downloads");
+DEFINE_uint64(concurrent, 100, "Concurrent object downloads");
 
 
 bool isS3(std::string str) {
