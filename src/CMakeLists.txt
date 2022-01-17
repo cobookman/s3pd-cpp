@@ -10,8 +10,10 @@ set(BUILD_ONLY core;s3;s3-crt CACHE INTERNAL "")
 set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "")
 FetchContent_Declare(
   aws-sdk-cpp
-  GIT_REPOSITORY https://github.com/aws/aws-sdk-cpp.git
-  GIT_TAG 1.9.171
+  # GIT_REPOSITORY https://github.com/aws/aws-sdk-cpp.git
+  GIT_REPOSITORY https://github.com/cobookman/aws-sdk-cpp
+  # GIT_TAG 1.9.171
+  GIT_TAG origin/p4dtest
 )
 FetchContent_MakeAvailable(aws-sdk-cpp)
 find_package(aws-sdk-cpp)

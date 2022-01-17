@@ -20,7 +20,7 @@
 class S3Copy {
     public:        
         // AWS Region to use
-        std::string region = Aws::Region::AWS_GLOBAL;
+        std::string region;
 
         // Throughput targeted per object download
         int64_t throughputTargetGbps = 10;
@@ -37,24 +37,34 @@ class S3Copy {
         // Discard output when set to true will throw away bytes downloaded to a noop iostream
         bool isBenchmark = false;
         
+        // If set will round robin traffic across the specified interfaces
+        std::string interfaces;
+
+        // Settings for event loop
+        const int32_t eventLoopThreads = 18;
+        const int32_t eventLoopHosts = 8;
+        const int32_t eventLoopTTL = 300;
+        const int32_t cpugroup = 0;
+
         // Starts the S3 copy job
         void Start(std::string bucket, std::string prefix, std::string destination);
 
         // If the copy job is done
-        bool IsDone();
+        bool IsDoneQueuing();
 
     private:
         std::mutex jobsMutex;
         std::queue<std::string> jobs;
 
-        std::shared_ptr<Aws::S3Crt::S3CrtClient> s3CrtClient;
         std::atomic_bool doneQueuingJobs = false;
         std::atomic_uint64_t bytesDownloaded = 0;
         std::atomic_uint64_t bytesQueued = 0;
         std::atomic_uint64_t objectsDownloaded = 0;
         std::atomic_uint64_t objectsQueued = 0;
-        void queueObjects(std::string bucket, std::string prefix);
+        void queueObjects(std::string interface, std::string bucket, std::string prefix);
+        void worker(std::string interface, std::string bucket, std::string destination);
+        void printProgress();
         std::string getJob();
-        void worker(std::string bucket, std::string destination);
         std::string prepareFilepath(std::string bucket, std::string objectKey);
+        Aws::S3Crt::S3CrtClient s3ClientFactory(std::string interface);
 };

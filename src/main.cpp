@@ -15,8 +15,8 @@ DEFINE_int64(throughputTarget, 100, "Throughput in Gbps to target for each file 
     "generally max instance throughput. For m5n.24xl this is generally set to 100");
 DEFINE_uint64(partSize, 8 * 1024 * 1024, "Bytes to download per HTTP request");
 DEFINE_uint64(concurrent, 100, "Concurrent object downloads");
-
-
+DEFINE_bool(benchmark, false, "Set if we are only reading from source, and want to discard data");
+DEFINE_string(interfaces, "", "If set will bind to the interfaces specified. For multiple seperate with a comma E.g. (--interfaces=en0,en1,en2,en4)");
 bool isS3(std::string str) {
     return str.substr(0, 5) == "s3://";
 }
@@ -67,7 +67,10 @@ int main(int argc, char *argv[]) {
         std::cout << "Utility only supports a single [source] and [destination]" << std::endl;
         return 1;
     }
-
+    if (FLAGS_region.size() == 0) {
+        std::cout << "--region missing" << std::endl;
+        return 1;
+    }
     std::string source = argv[1];
     std::string destination = argv[2];
     
@@ -77,16 +80,15 @@ int main(int argc, char *argv[]) {
 
         std::cout << "s3 Bucket: " << bucket << std::endl;
         std::cout << "object Prefix: " << prefix << std::endl;
-        std::cout << "save Destination: " << destination << std::endl;
+        std::cout << "destination: " << destination << std::endl;
 
         S3Copy s3Copy;
-        if (FLAGS_region.size() > 0) {
-            s3Copy.region = FLAGS_region;
-        }
-    
+        s3Copy.region = FLAGS_region;
         s3Copy.throughputTargetGbps = FLAGS_throughputTarget;
         s3Copy.partSize = FLAGS_partSize;
         s3Copy.concurrentDownloads = FLAGS_concurrent;
+        s3Copy.isBenchmark = FLAGS_benchmark;
+        s3Copy.interfaces = FLAGS_interfaces;
         s3Copy.Start(bucket, prefix, destination);
     } else {
         std::cerr << "S3 writes not yet supported";
